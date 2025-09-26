@@ -1,13 +1,17 @@
 # streamlit run app.py
+import os, io, zipfile, glob, json, tempfile, time
+from pathlib import Path
+import importlib
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib, os, io, zipfile, glob, json, tempfile, time
+import joblib
 import matplotlib.pyplot as plt
 
 # ================== CONFIG ==================
-MODEL_PATH = r"D:\Orange_sms_filtering\Files\model_new.pkl"
-REQUIRED_FEATURES = ['distinct_B', 'successful_sms'] 
+APP_DIR = Path(__file__).parent.resolve()
+MODEL_PATH = str(APP_DIR / "Files" / "model_new.pkl")  # make sure Files/model_new.pkl exists in the repo
+REQUIRED_FEATURES = ['distinct_B', 'successful_sms']
 CHUNK_ROWS = 2_000_000
 DEFAULT_THRESHOLD = 0.9978
 
@@ -28,13 +32,35 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ================== DEPENDENCY CHECK ==================
+def show_env_diagnostics():
+    with st.sidebar:
+        st.markdown('<div class="sidebar-title">Environment</div>', unsafe_allow_html=True)
+        for mod in ["numpy", "pandas", "sklearn", "joblib", "matplotlib"]:
+            try:
+                m = importlib.import_module(mod)
+                ver = getattr(m, "__version__", "n/a")
+                st.write(f"{mod}: {ver}")
+            except ModuleNotFoundError:
+                st.error(f"Missing module: {mod} (add to requirements.txt)")
+        st.caption(f"Model path: {MODEL_PATH}")
+
+show_env_diagnostics()
+
 # ================== LOAD MODEL ==================
 @st.cache_resource
 def load_model_and_threshold():
     if not os.path.exists(MODEL_PATH):
         st.error(f"Model not found at: {MODEL_PATH}")
         st.stop()
-    model = joblib.load(MODEL_PATH)
+    try:
+        model = joblib.load(MODEL_PATH)
+    except ModuleNotFoundError as e:
+        st.error(f"Model requires a missing package during load: {e}. Pin matching versions in requirements.txt.")
+        st.stop()
+    except Exception as e:
+        st.exception(e)
+        st.stop()
 
     th = DEFAULT_THRESHOLD
     if os.path.exists("config.json"):
@@ -61,19 +87,16 @@ def ensure_clean(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def _build_X_for_model(df: pd.DataFrame, base_feats: list, model):
-    # Check model n_features_in_ if available
     n_expected = getattr(model, "n_features_in_", len(base_feats))
-
     missing = [c for c in base_feats if c not in df.columns]
     if missing:
         raise ValueError(f"Missing columns: {missing}. Found: {list(df.columns)}")
 
     X = df[base_feats].astype(float)
-
     if n_expected == len(base_feats):
         return X
 
-    if n_expected == 3:
+    if n_expected == 3 and 'msgs_per_recipient' not in X.columns:
         zero_col = pd.Series(0.0, index=df.index, name='msgs_per_recipient')
         X = pd.concat([X, zero_col], axis=1).astype(float)
         return X
@@ -90,17 +113,27 @@ def score_df(model, df: pd.DataFrame, threshold: float) -> pd.DataFrame:
         st.error(str(e))
         return pd.DataFrame()
 
-    proba = model.predict_proba(X)[:, 1]  # expects classes_ = [0,1]
+    if hasattr(model, "predict_proba"):
+        proba = model.predict_proba(X)[:, 1]
+    elif hasattr(model, "decision_function"):
+        # Fallback if model lacks predict_proba
+        s = model.decision_function(X).astype(float)
+        s = (s - s.min()) / (s.max() - s.min() + 1e-12)
+        proba = s
+    else:
+        st.error("Model has neither predict_proba nor decision_function.")
+        return pd.DataFrame()
+
     out = df.copy()
     out['anomaly_score'] = proba
     out['label'] = (out['anomaly_score'] >= threshold).astype(int)
     return out
 
-# --- Safe remove (Windows) ---
 def safe_unlink(p, retries=5, delay=0.2):
     for _ in range(retries):
         try:
-            os.remove(p); return
+            os.remove(p)
+            return
         except PermissionError:
             time.sleep(delay)
     try:
@@ -108,7 +141,6 @@ def safe_unlink(p, retries=5, delay=0.2):
     except Exception:
         pass
 
-# --- Readers ---
 def read_csv_in_chunks(path):
     with open(path, "rb") as fh:
         reader = pd.read_csv(fh, chunksize=CHUNK_ROWS, sep=None, engine="python")
@@ -204,14 +236,15 @@ if run:
             if os.path.isdir(folder):
                 scored = process_folder(model, folder.strip(), th)
             else:
-                st.error("Invalid folder path."); st.stop()
+                st.error("Invalid folder path.")
+                st.stop()
         else:
-            st.info("Upload files or provide a folder path."); st.stop()
+            st.info("Upload files or provide a folder path.")
+            st.stop()
 
     if scored.empty:
         st.stop()
 
-    # ===== KPIs =====
     total_rate = scored['label'].mean() * 100
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Total rows", f"{len(scored):,}")
@@ -221,7 +254,6 @@ if run:
 
     st.divider()
 
-    # ===== DOWNLOADS =====
     raw_anoms = scored[scored['label'] == 1].copy()
     d1, d2 = st.columns(2)
     with d1:
@@ -237,7 +269,6 @@ if run:
             file_name="scored_full.csv", mime="text/csv"
         )
 
-    # ===== GROUP BY SENDER (no msgs_per_recipient at all) =====
     st.subheader("By Sender (RAW anomalies)")
     if 'sending_party_hash' in raw_anoms.columns and not raw_anoms.empty:
         agg = (
@@ -260,7 +291,6 @@ if run:
     else:
         st.info("No 'sending_party_hash' or no anomalies found.")
 
-    # ===== TABLE & CHARTS =====
     t1, t2 = st.tabs(["📄 RAW anomalies (sample)", "📊 Charts"])
     with t1:
         st.dataframe(raw_anoms.head(200))
