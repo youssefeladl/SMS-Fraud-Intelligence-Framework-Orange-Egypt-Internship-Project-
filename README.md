@@ -1,58 +1,73 @@
-Uncovering the Invisible: Building a Telecom-Scale Fraud Intelligence Framework
-
-At Orange Egypt – Big Data & AI, I had the privilege to architect and deliver a system that redefines SMS fraud detection—elevating it from a single algorithm into a multi-layered fraud intelligence framework.
+# 🚨 SMS Fraud Intelligence Framework  
+**Orange Egypt – Big Data & AI Internship Project**  
 <img width="1536" height="1024" alt="98831fe3-e670-4f1f-a6a2-20b7e7b139a8" src="https://github.com/user-attachments/assets/da2c7f3c-73b9-43a6-b526-2b2f5bc9dc31" />
-This was never about “running a model.” It was about designing a scientific investigation pipeline where every tool—from EDA to anomaly detection to supervised learning—became part of one coherent shield.
+https://qyhnfssnsdrcvb32huxrlx.streamlit.app/
+An end-to-end system for detecting and analyzing fraudulent SMS traffic at telecom scale.  
+This project combines exploratory analysis, anomaly detection, supervised learning, and a production-ready dashboard — designed not just as a prototype, but as an **operator-level fraud intelligence tool**.  
+---
+## 📌 Overview  
 
-🔬 1. Exploratory Data Analysis as an Instrument
-EDA wasn’t a checkbox. It was an investigative weapon:
+Billions of SMS messages flow through telecom networks daily. Hidden within them lies a fraction of traffic that represents fraud — small in volume, but significant in impact.  
 
-Performed quantile drilling at 5% steps, uncovering subtle irregularities invisible at the surface.
+This framework was built to uncover those invisible patterns using a **multi-layered approach**:  
 
-Identified 0.1% (≈0.001) of traffic as the empirically valid anomaly threshold—rare enough to be statistically significant, critical enough to be operationally meaningful.
+- **Quantile-based Exploratory Data Analysis (EDA)** to identify anomaly thresholds.  
+- **Isolation Forest** for unsupervised outlier discovery.  
+- **Clustering** as a diagnostic instrument to validate anomaly structures.  
+- **Random Forest** classifier trained on labeled anomalies, optimized for high recall.  
+- **Streamlit dashboard** to operationalize detection with scalability and usability.  
 
-This quantile-based insight wasn’t just analysis, it was the compass that guided every downstream decision.
+---
 
-🕵 2. Outlier Discovery → Structured Knowledge
+## 🔬 Methodology  
 
-Launched with Isolation Forest to uncover latent anomalies.
+1. **EDA as Foundation**  
+   - Performed quantile drilling (every 5%) across millions of SMS logs.  
+   - Determined 0.1% (≈0.001) as the logical anomaly ratio.  
 
-Applied clustering not for its end labels, but as a lens—a diagnostic instrument to reveal hidden groupings and validate anomaly structure.
+2. **Anomaly Discovery & Labeling**  
+   - Detected anomalies via Isolation Forest.  
+   - Used clustering to interpret anomaly distribution.  
+   - Converted signals into labeled fraud datasets.  
 
-Translated unsupervised signals into a labeled fraud dataset, bridging the gap between raw exploration and supervised modeling.
+3. **Modeling**  
+   - Trained a Random Forest classifier for supervised detection.  
+   - Prioritized **high recall** to minimize missed fraud cases.  
 
-🌲 3. Modeling with Purpose
+4. **Deployment**  
+   - Built a Streamlit app with:  
+     - Multi-format support (CSV, Parquet, ZIP).  
+     - Sender-level aggregation & ranking.  
+     - Exportable anomaly reports.  
+     - Interactive charts for anomaly distributions.  
 
-Built a Random Forest classifier informed by anomaly labels.
+---
 
-Optimized deliberately for high recall: in fraud, catching all threats comes before narrowing precision.
+## ⚡ Features  
 
-Adjusted contamination ratios using outlier-driven calibration from the EDA phase—blending statistical rigor with business imperatives.
+- Scalable scoring for **multi-million row datasets**.  
+- Hybrid fraud detection: **Isolation Forest + Random Forest**.  
+- Operator-grade interface with **Streamlit**.  
+- Exportable anomaly insights for investigation teams.  
 
-⚙ 4. Operational Deployment
+---
 
-Delivered a production-grade Streamlit platform:
+## 🛠️ Tech Stack  
 
-Capable of scoring multi-million row datasets (CSV/Parquet/ZIP) seamlessly.
+- **Python** (Pandas, NumPy, scikit-learn)  
+- **Isolation Forest & Random Forest**  
+- **Clustering (EDA tool)**  
+- **Matplotlib** (visual analytics)  
+- **Streamlit** (dashboard)  
 
-Aggregates anomalies by sender, quantifies impact, and prioritizes suspicious entities.
+---
 
-Generates downloadable anomaly reports and interactive analytics for real-time decision-making.
+## 🙏 Acknowledgements  
 
-Not a prototype, but a scalable operator-ready tool
+Special thanks to **Kareem Seliman** and the Orange Big Data & AI team for their mentorship and valuable feedback throughout this project.  
 
-app
+---
 
-.
+## 🎯 Mission  
 
-🎯 Core Realization
-Fraud detection is not the art of chasing a “perfect algorithm.”
-It is the science of layering methods, instruments, and thresholds into a framework that adapts to the scale and complexity of real-world systems.
-
-🙏 Acknowledgements
-Grateful to Kareem Seliman and the Orange Big Data & AI team—your mentorship and sharp feedback transformed this project into an applied research milestone.
-
-🔸 Mastered domains: Quantile-Based Outlier Mining · EDA as Instrument · Isolation Forest · Clustering · Random Forest · High-Recall Modeling · Big Data Deployment
-🔸 Mission: advancing the frontier where AI safeguards telecom ecosystems at scale.
-
-#FraudIntelligence #AIinTelecom #OrangeEgypt #BigData #AnomalyDetection #MachineLearning
+To advance the frontier where **AI safeguards telecom ecosystems** by turning raw SMS data into real-time fraud intelligence.  
