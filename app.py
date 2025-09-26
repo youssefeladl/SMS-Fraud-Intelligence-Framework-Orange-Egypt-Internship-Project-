@@ -3,7 +3,14 @@ import os, io, zipfile, glob, json, tempfile, time, pathlib, pickle
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+
+# Optional matplotlib (fallback if unavailable)
+try:
+    import matplotlib.pyplot as plt
+    HAVE_MPL = True
+except Exception:
+    plt = None
+    HAVE_MPL = False
 
 # ================== CONFIG ==================
 REPO_DIR = pathlib.Path(__file__).parent
@@ -33,7 +40,7 @@ st.markdown(
 def ensure_model_local():
     """
     If MODEL_PATH exists locally, use it.
-    Otherwise, try to download from st.secrets["MODEL_URL"] into /tmp.
+    Otherwise, try to download from st.secrets['MODEL_URL'] into /tmp.
     """
     global MODEL_PATH
     if os.path.exists(MODEL_PATH):
@@ -51,9 +58,9 @@ def ensure_model_local():
         )
         st.stop()
 
-    # Lazy import to avoid ModuleNotFoundError if not needed
+    # Lazy import requests only if needed
     try:
-        import requests  # noqa
+        import requests
     except Exception:
         st.error(
             "Missing dependency: requests. Add 'requests>=2.31' to requirements.txt "
@@ -62,8 +69,6 @@ def ensure_model_local():
         st.stop()
 
     from pathlib import Path
-    import requests  # type: ignore
-
     tmp_path = Path("/tmp/rf_model.joblib")
     if not tmp_path.exists():
         try:
@@ -78,22 +83,17 @@ def ensure_model_local():
     return MODEL_PATH
 
 def _load_model(path: str):
-    """
-    Try joblib first; if unavailable or fails, try pickle.
-    """
-    # Try joblib (lazy import)
+    """Try joblib first; if unavailable, fallback to pickle."""
     try:
-        import joblib  # noqa
-        return joblib.load(path)  # type: ignore
-    except Exception as e_joblib:
-        # Fallback to pickle
+        import joblib
+        return joblib.load(path)
+    except Exception:
         try:
             with open(path, "rb") as fh:
                 return pickle.load(fh)
-        except Exception as e_pickle:
+        except Exception:
             st.error(
-                "Failed to load model. "
-                "Install joblib (add 'joblib>=1.3' to requirements.txt) "
+                "Failed to load model. Install joblib (add 'joblib>=1.3' to requirements.txt) "
                 "or provide a pickle-compatible model file."
             )
             st.stop()
@@ -161,7 +161,6 @@ def score_df(model, df: pd.DataFrame, threshold: float) -> pd.DataFrame:
         st.error(str(e))
         return pd.DataFrame()
 
-    # model must implement predict_proba with classes_ = [0,1]
     proba = model.predict_proba(X)[:, 1]
     out = df.copy()
     out["anomaly_score"] = proba
@@ -200,10 +199,9 @@ def read_any_path(path):
             with open(path, "rb") as fh:
                 data = fh.read()
             yield pd.read_parquet(io.BytesIO(data))
-        except Exception as e:
+        except Exception:
             st.error(
-                "Failed to read Parquet. Add 'pyarrow>=14.0' to requirements.txt "
-                "or provide CSV instead."
+                "Failed to read Parquet. Add 'pyarrow>=14.0' to requirements.txt or use CSV."
             )
             return
     else:
@@ -346,15 +344,18 @@ if run:
     else:
         st.info("No 'sending_party_hash' or no anomalies found.")
 
-    # ===== TABLE & CHARTS =====
-    t1, t2 = st.tabs(["📄 RAW anomalies (sample)", "📊 Charts"])
-    with t1:
-        st.dataframe(raw_anoms.head(200))
-    with t2:
+    # ===== CHARTS =====
+    if HAVE_MPL:
         fig1, ax1 = plt.subplots(figsize=(6, 4))
         ax1.hist(scored["anomaly_score"], bins=60)
         ax1.set_title("Anomaly score distribution (all rows)")
         st.pyplot(fig1)
+    else:
+        # Fallback: bar chart without matplotlib
+        hist, edges = np.histogram(scored["anomaly_score"], bins=60)
+        mid = (edges[:-1] + edges[1:]) / 2
+        chart_df = pd.DataFrame({"bin": mid, "count": hist}).set_index("bin")
+        st.bar_chart(chart_df)
 
     st.success("✅ Scoring finished.")
 else:
