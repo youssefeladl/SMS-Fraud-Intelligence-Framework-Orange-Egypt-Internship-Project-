@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib, os, io, zipfile, glob, json, tempfile, time, pathlib, requests
+import joblib, os, io, zipfile, glob, json, tempfile, time, pathlib
 import matplotlib.pyplot as plt
 
 # ================== CONFIG ==================
@@ -30,23 +30,39 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ================== MODEL FETCH (if not local) ==================
+# ================== MODEL FETCH (only if not local) ==================
 def ensure_model_local():
     """
     If MODEL_PATH exists -> use it.
     Else try to download from st.secrets['MODEL_URL'] into /tmp.
+    NOTE: requests is imported lazily ONLY when needed.
     """
     global MODEL_PATH
     if os.path.exists(MODEL_PATH):
         return MODEL_PATH
 
+    # get URL from secrets if provided
     try:
         model_url = st.secrets.get("MODEL_URL", None)
     except Exception:
         model_url = None
 
     if not model_url:
-        st.error("Model not found locally and no MODEL_URL provided in secrets.")
+        st.error(
+            "Model not found locally and no MODEL_URL provided in secrets.\n"
+            "→ الحل: إمّا ترفع rf_model.joblib جنب app.py في الريبو، أو تضيف MODEL_URL في Secrets."
+        )
+        st.stop()
+
+    # lazy import of requests (to avoid ModuleNotFoundError if not needed)
+    try:
+        import requests
+    except Exception:
+        st.error(
+            "requests غير متوفرة.\n"
+            "لو هتنزل الموديل من MODEL_URL، أضف 'requests>=2.31' إلى requirements.txt.\n"
+            "أو بدلًا من ذلك، ارفع rf_model.joblib جنب app.py ولن تحتاج requests."
+        )
         st.stop()
 
     tmp_path = pathlib.Path("/tmp/rf_model.joblib")
