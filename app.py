@@ -2,14 +2,16 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib, os, io, zipfile, glob, json, tempfile, time
+import joblib, os, io, zipfile, glob, json, tempfile, time, pathlib, requests
 import matplotlib.pyplot as plt
 
 # ================== CONFIG ==================
-MODEL_PATH = r"D:\Orange_sms_filtering\rf_model.joblib"
-REQUIRED_FEATURES = ['distinct_B', 'successful_sms'] 
+REPO_DIR = pathlib.Path(__file__).parent
+# Relative by default; can be overridden by env var or secrets-download
+MODEL_PATH = os.getenv("MODEL_PATH", str(REPO_DIR / "rf_model.joblib"))
+REQUIRED_FEATURES = ['distinct_B', 'successful_sms']
 CHUNK_ROWS = 2_000_000
-DEFAULT_THRESHOLD = 0.9978
+DEFAULT_THRESHOLD = float(os.getenv("DEFAULT_THRESHOLD", "0.9978"))
 
 st.set_page_config(page_title="Anomaly Scoring — Production", layout="wide")
 
@@ -28,12 +30,46 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ================== MODEL FETCH (if not local) ==================
+def ensure_model_local():
+    """
+    If MODEL_PATH exists -> use it.
+    Else try to download from st.secrets['MODEL_URL'] into /tmp.
+    """
+    global MODEL_PATH
+    if os.path.exists(MODEL_PATH):
+        return MODEL_PATH
+
+    try:
+        model_url = st.secrets.get("MODEL_URL", None)
+    except Exception:
+        model_url = None
+
+    if not model_url:
+        st.error("Model not found locally and no MODEL_URL provided in secrets.")
+        st.stop()
+
+    tmp_path = pathlib.Path("/tmp/rf_model.joblib")
+    if not tmp_path.exists():
+        try:
+            r = requests.get(model_url, timeout=120)
+            r.raise_for_status()
+            tmp_path.write_bytes(r.content)
+        except Exception as e:
+            st.error(f"Failed to download model from MODEL_URL: {e}")
+            st.stop()
+
+    MODEL_PATH = str(tmp_path)
+    return MODEL_PATH
+
 # ================== LOAD MODEL ==================
 @st.cache_resource
 def load_model_and_threshold():
+    ensure_model_local()
     if not os.path.exists(MODEL_PATH):
         st.error(f"Model not found at: {MODEL_PATH}")
         st.stop()
+
     model = joblib.load(MODEL_PATH)
 
     th = DEFAULT_THRESHOLD
@@ -61,7 +97,6 @@ def ensure_clean(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def _build_X_for_model(df: pd.DataFrame, base_feats: list, model):
-    # Check model n_features_in_ if available
     n_expected = getattr(model, "n_features_in_", len(base_feats))
 
     missing = [c for c in base_feats if c not in df.columns]
@@ -188,7 +223,7 @@ with st.sidebar:
         type=["csv", "parquet", "zip"],
         accept_multiple_files=True
     )
-    folder = st.text_input("Or server folder path (for very large data)")
+    folder = st.text_input("Or server folder path (for very large data)")  # local use only
     th = st.slider("Threshold (higher ⇒ fewer anomalies)", 0.50, 1.00, float(default_th), 0.0001)
     run = st.button("▶️ Run scoring")
 
@@ -237,7 +272,7 @@ if run:
             file_name="scored_full.csv", mime="text/csv"
         )
 
-    # ===== GROUP BY SENDER (no msgs_per_recipient at all) =====
+    # ===== GROUP BY SENDER =====
     st.subheader("By Sender (RAW anomalies)")
     if 'sending_party_hash' in raw_anoms.columns and not raw_anoms.empty:
         agg = (
