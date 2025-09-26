@@ -1,8 +1,9 @@
 # streamlit run app.py
-import os, io, zipfile, glob, json, tempfile, time, pathlib, pickle
+import os, io, zipfile, glob, json, tempfile, time, pathlib
 import streamlit as st
 import pandas as pd
 import numpy as np
+from joblib import load   # <<< استعمل joblib فقط
 
 # Optional matplotlib (fallback if unavailable)
 try:
@@ -14,7 +15,7 @@ except Exception:
 
 # ================== CONFIG ==================
 REPO_DIR = pathlib.Path(__file__).parent
-MODEL_PATH = str(REPO_DIR / "rf_model_new.pkl")   # <<< هنا اتغير
+MODEL_PATH = str(REPO_DIR / "rf_model_new.pkl")   # لازم الملف يبقى مرفوع جنب app.py
 REQUIRED_FEATURES = ["distinct_B", "successful_sms"]
 CHUNK_ROWS = 2_000_000
 DEFAULT_THRESHOLD = float(os.getenv("DEFAULT_THRESHOLD", "0.9978"))
@@ -37,29 +38,17 @@ st.markdown(
 )
 
 # ================== MODEL LOAD ==================
-def _load_model(path: str):
-    """Try joblib first; if unavailable, fallback to pickle."""
-    try:
-        import joblib
-        return joblib.load(path)
-    except Exception:
-        try:
-            with open(path, "rb") as fh:
-                return pickle.load(fh)
-        except Exception:
-            st.error(
-                "❌ Failed to load model. Make sure rf_model_new.pkl exists and "
-                "add 'joblib>=1.3' to requirements.txt if needed."
-            )
-            st.stop()
-
 @st.cache_resource
 def load_model_and_threshold():
     if not os.path.exists(MODEL_PATH):
-        st.error(f"❌ Model not found at: {MODEL_PATH}")
+        st.error(f"❌ Model not found. Upload rf_model_new.pkl next to app.py.")
         st.stop()
 
-    model = _load_model(MODEL_PATH)
+    try:
+        model = load(MODEL_PATH)   # joblib فقط
+    except Exception as e:
+        st.error(f"❌ Failed to load model: {e}")
+        st.stop()
 
     th = DEFAULT_THRESHOLD
     if os.path.exists("config.json"):
