@@ -6,7 +6,7 @@ import numpy as np
 
 # ================== CONFIG ==================
 REPO_DIR = pathlib.Path(__file__).parent
-MODEL_PATH = str(REPO_DIR / "rf_model_cloud_5.pkl")   # نسخة cloud الجديدة
+MODEL_PATH = str(REPO_DIR / "rf_model_cloud_3.pkl")   # نسخة cloud الجديدة
 REQUIRED_FEATURES = ["distinct_B", "successful_sms"]
 CHUNK_ROWS = 2_000_000
 DEFAULT_THRESHOLD = float(os.getenv("DEFAULT_THRESHOLD", "0.9978"))
