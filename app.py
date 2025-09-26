@@ -14,7 +14,7 @@ except Exception:
 
 # ================== CONFIG ==================
 REPO_DIR = pathlib.Path(__file__).parent
-MODEL_PATH = os.getenv("MODEL_PATH", str(REPO_DIR / "rf_model.joblib"))
+MODEL_PATH = os.getenv("MODEL_PATH", str(REPO_DIR / "D:\Orange_sms_filtering\Files\rf_model.joblib"))
 REQUIRED_FEATURES = ["distinct_B", "successful_sms"]
 CHUNK_ROWS = 2_000_000
 DEFAULT_THRESHOLD = float(os.getenv("DEFAULT_THRESHOLD", "0.9978"))
