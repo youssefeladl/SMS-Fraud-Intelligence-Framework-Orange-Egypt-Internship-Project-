@@ -1,15 +1,14 @@
 # streamlit run app.py
+import os, io, zipfile, glob, json, tempfile, time, pathlib, pickle
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib, os, io, zipfile, glob, json, tempfile, time, pathlib
 import matplotlib.pyplot as plt
 
 # ================== CONFIG ==================
 REPO_DIR = pathlib.Path(__file__).parent
-# Relative by default; can be overridden by env var or secrets-download
 MODEL_PATH = os.getenv("MODEL_PATH", str(REPO_DIR / "rf_model.joblib"))
-REQUIRED_FEATURES = ['distinct_B', 'successful_sms']
+REQUIRED_FEATURES = ["distinct_B", "successful_sms"]
 CHUNK_ROWS = 2_000_000
 DEFAULT_THRESHOLD = float(os.getenv("DEFAULT_THRESHOLD", "0.9978"))
 
@@ -30,18 +29,16 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ================== MODEL FETCH (only if not local) ==================
+# ================== MODEL FETCH (optional via secrets) ==================
 def ensure_model_local():
     """
-    If MODEL_PATH exists -> use it.
-    Else try to download from st.secrets['MODEL_URL'] into /tmp.
-    NOTE: requests is imported lazily ONLY when needed.
+    If MODEL_PATH exists locally, use it.
+    Otherwise, try to download from st.secrets["MODEL_URL"] into /tmp.
     """
     global MODEL_PATH
     if os.path.exists(MODEL_PATH):
         return MODEL_PATH
 
-    # get URL from secrets if provided
     try:
         model_url = st.secrets.get("MODEL_URL", None)
     except Exception:
@@ -49,23 +46,25 @@ def ensure_model_local():
 
     if not model_url:
         st.error(
-            "Model not found locally and no MODEL_URL provided in secrets.\n"
-            "→ الحل: إمّا ترفع rf_model.joblib جنب app.py في الريبو، أو تضيف MODEL_URL في Secrets."
+            "Model not found locally and no MODEL_URL provided in secrets. "
+            "Either upload rf_model.joblib alongside app.py or set MODEL_URL in Secrets."
         )
         st.stop()
 
-    # lazy import of requests (to avoid ModuleNotFoundError if not needed)
+    # Lazy import to avoid ModuleNotFoundError if not needed
     try:
-        import requests
+        import requests  # noqa
     except Exception:
         st.error(
-            "requests غير متوفرة.\n"
-            "لو هتنزل الموديل من MODEL_URL، أضف 'requests>=2.31' إلى requirements.txt.\n"
-            "أو بدلًا من ذلك، ارفع rf_model.joblib جنب app.py ولن تحتاج requests."
+            "Missing dependency: requests. Add 'requests>=2.31' to requirements.txt "
+            "or upload the model file locally."
         )
         st.stop()
 
-    tmp_path = pathlib.Path("/tmp/rf_model.joblib")
+    from pathlib import Path
+    import requests  # type: ignore
+
+    tmp_path = Path("/tmp/rf_model.joblib")
     if not tmp_path.exists():
         try:
             r = requests.get(model_url, timeout=120)
@@ -78,6 +77,27 @@ def ensure_model_local():
     MODEL_PATH = str(tmp_path)
     return MODEL_PATH
 
+def _load_model(path: str):
+    """
+    Try joblib first; if unavailable or fails, try pickle.
+    """
+    # Try joblib (lazy import)
+    try:
+        import joblib  # noqa
+        return joblib.load(path)  # type: ignore
+    except Exception as e_joblib:
+        # Fallback to pickle
+        try:
+            with open(path, "rb") as fh:
+                return pickle.load(fh)
+        except Exception as e_pickle:
+            st.error(
+                "Failed to load model. "
+                "Install joblib (add 'joblib>=1.3' to requirements.txt) "
+                "or provide a pickle-compatible model file."
+            )
+            st.stop()
+
 # ================== LOAD MODEL ==================
 @st.cache_resource
 def load_model_and_threshold():
@@ -86,7 +106,7 @@ def load_model_and_threshold():
         st.error(f"Model not found at: {MODEL_PATH}")
         st.stop()
 
-    model = joblib.load(MODEL_PATH)
+    model = _load_model(MODEL_PATH)
 
     th = DEFAULT_THRESHOLD
     if os.path.exists("config.json"):
@@ -106,7 +126,7 @@ model, default_th = load_model_and_threshold()
 # ================== HELPERS ==================
 def ensure_clean(df: pd.DataFrame) -> pd.DataFrame:
     drop_cols = [c for c in df.columns if c.lower() in {
-        'isolationforest_labels', 'iso_label', 'isolation_forest_labels'
+        "isolationforest_labels", "iso_label", "isolation_forest_labels"
     }]
     if drop_cols:
         df = df.drop(columns=drop_cols)
@@ -125,7 +145,7 @@ def _build_X_for_model(df: pd.DataFrame, base_feats: list, model):
         return X
 
     if n_expected == 3:
-        zero_col = pd.Series(0.0, index=df.index, name='msgs_per_recipient')
+        zero_col = pd.Series(0.0, index=df.index, name="msgs_per_recipient")
         X = pd.concat([X, zero_col], axis=1).astype(float)
         return X
 
@@ -141,10 +161,11 @@ def score_df(model, df: pd.DataFrame, threshold: float) -> pd.DataFrame:
         st.error(str(e))
         return pd.DataFrame()
 
-    proba = model.predict_proba(X)[:, 1]  # expects classes_ = [0,1]
+    # model must implement predict_proba with classes_ = [0,1]
+    proba = model.predict_proba(X)[:, 1]
     out = df.copy()
-    out['anomaly_score'] = proba
-    out['label'] = (out['anomaly_score'] >= threshold).astype(int)
+    out["anomaly_score"] = proba
+    out["label"] = (out["anomaly_score"] >= threshold).astype(int)
     return out
 
 # --- Safe remove (Windows) ---
@@ -175,9 +196,16 @@ def read_any_path(path):
     if low.endswith(".csv"):
         yield from read_csv_in_chunks(path)
     elif low.endswith(".parquet"):
-        with open(path, "rb") as fh:
-            data = fh.read()
-        yield pd.read_parquet(io.BytesIO(data))
+        try:
+            with open(path, "rb") as fh:
+                data = fh.read()
+            yield pd.read_parquet(io.BytesIO(data))
+        except Exception as e:
+            st.error(
+                "Failed to read Parquet. Add 'pyarrow>=14.0' to requirements.txt "
+                "or provide CSV instead."
+            )
+            return
     else:
         st.warning(f"Skip {os.path.basename(path)} (CSV/Parquet only)")
 
@@ -195,7 +223,14 @@ def process_uploaded_files(model, files, threshold: float) -> pd.DataFrame:
                             if mlow.endswith(".csv"):
                                 df = pd.read_csv(io.BytesIO(data), sep=None, engine="python")
                             else:
-                                df = pd.read_parquet(io.BytesIO(data))
+                                try:
+                                    df = pd.read_parquet(io.BytesIO(data))
+                                except Exception:
+                                    st.error(
+                                        "Failed to read Parquet inside ZIP. "
+                                        "Add 'pyarrow>=14.0' to requirements.txt or use CSV."
+                                    )
+                                    continue
                             scored = score_df(model, df, threshold)
                             if not scored.empty:
                                 parts.append(scored)
@@ -263,7 +298,7 @@ if run:
         st.stop()
 
     # ===== KPIs =====
-    total_rate = scored['label'].mean() * 100
+    total_rate = scored["label"].mean() * 100
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Total rows", f"{len(scored):,}")
     k2.metric("Threshold", f"{th:.4f}")
@@ -273,7 +308,7 @@ if run:
     st.divider()
 
     # ===== DOWNLOADS =====
-    raw_anoms = scored[scored['label'] == 1].copy()
+    raw_anoms = scored[scored["label"] == 1].copy()
     d1, d2 = st.columns(2)
     with d1:
         st.download_button(
@@ -290,16 +325,16 @@ if run:
 
     # ===== GROUP BY SENDER =====
     st.subheader("By Sender (RAW anomalies)")
-    if 'sending_party_hash' in raw_anoms.columns and not raw_anoms.empty:
+    if "sending_party_hash" in raw_anoms.columns and not raw_anoms.empty:
         agg = (
-            raw_anoms.groupby('sending_party_hash', dropna=False)
+            raw_anoms.groupby("sending_party_hash", dropna=False)
             .agg(
-                n_rows=('label', 'count'),
-                worst_score=('anomaly_score', 'min'),
-                total_sms=('successful_sms', 'sum'),
-                total_distinct=('distinct_B', 'sum')
+                n_rows=("label", "count"),
+                worst_score=("anomaly_score", "min"),
+                total_sms=("successful_sms", "sum"),
+                total_distinct=("distinct_B", "sum")
             )
-            .sort_values(['worst_score', 'total_sms'], ascending=[True, False])
+            .sort_values(["worst_score", "total_sms"], ascending=[True, False])
             .reset_index()
         )
         st.dataframe(agg.head(50))
@@ -317,7 +352,7 @@ if run:
         st.dataframe(raw_anoms.head(200))
     with t2:
         fig1, ax1 = plt.subplots(figsize=(6, 4))
-        ax1.hist(scored['anomaly_score'], bins=60)
+        ax1.hist(scored["anomaly_score"], bins=60)
         ax1.set_title("Anomaly score distribution (all rows)")
         st.pyplot(fig1)
 
