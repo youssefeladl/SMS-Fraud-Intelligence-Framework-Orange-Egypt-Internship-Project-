@@ -2,6 +2,7 @@
 **Orange Egypt – Big Data & AI Internship Project**  
 <img width="1536" height="1024" alt="98831fe3-e670-4f1f-a6a2-20b7e7b139a8" src="https://github.com/user-attachments/assets/da2c7f3c-73b9-43a6-b526-2b2f5bc9dc31" />
 https://qyhnfssnsdrcvb32huxrlx.streamlit.app/
+
 An end-to-end system for detecting and analyzing fraudulent SMS traffic at telecom scale.  
 This project combines exploratory analysis, anomaly detection, supervised learning, and a production-ready dashboard — designed not just as a prototype, but as an **operator-level fraud intelligence tool**.  
 ---
