@@ -1,16 +1,23 @@
 # streamlit run app.py
+import streamlit as st
+
+# ---- minimal guard so the app fails with a clear message if a core package is missing
+try:
+    import joblib
+except ModuleNotFoundError:
+    st.error("Missing package: joblib. Add 'joblib' to requirements.txt and redeploy.")
+    st.stop()
+
 import os, io, zipfile, glob, json, tempfile, time
 from pathlib import Path
 import importlib
-import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib
 import matplotlib.pyplot as plt
 
 # ================== CONFIG ==================
 APP_DIR = Path(__file__).parent.resolve()
-MODEL_PATH = str(APP_DIR / "Files" / "model_new.pkl")  # make sure Files/model_new.pkl exists in the repo
+MODEL_PATH = str(APP_DIR / "Files" / "model_new.pkl")  # ensure Files/model_new.pkl exists in the repo
 REQUIRED_FEATURES = ['distinct_B', 'successful_sms']
 CHUNK_ROWS = 2_000_000
 DEFAULT_THRESHOLD = 0.9978
@@ -36,7 +43,7 @@ st.markdown(
 def show_env_diagnostics():
     with st.sidebar:
         st.markdown('<div class="sidebar-title">Environment</div>', unsafe_allow_html=True)
-        for mod in ["numpy", "pandas", "sklearn", "joblib", "matplotlib"]:
+        for mod in ["numpy", "pandas", "sklearn", "joblib", "matplotlib", "pyarrow"]:
             try:
                 m = importlib.import_module(mod)
                 ver = getattr(m, "__version__", "n/a")
@@ -116,7 +123,6 @@ def score_df(model, df: pd.DataFrame, threshold: float) -> pd.DataFrame:
     if hasattr(model, "predict_proba"):
         proba = model.predict_proba(X)[:, 1]
     elif hasattr(model, "decision_function"):
-        # Fallback if model lacks predict_proba
         s = model.decision_function(X).astype(float)
         s = (s - s.min()) / (s.max() - s.min() + 1e-12)
         proba = s
