@@ -1,25 +1,15 @@
-# streamlit run app.py
-import os, json, pathlib, pickle
+# app.py
+import os, json, pickle, pathlib
 import streamlit as st
 import pandas as pd
 import numpy as np
 
-# Optional matplotlib (fallback if unavailable)
-try:
-    import matplotlib.pyplot as plt
-    HAVE_MPL = True
-except Exception:
-    plt = None
-    HAVE_MPL = False
-
 # ================== CONFIG ==================
 REPO_DIR = pathlib.Path(__file__).parent
-MODEL_PATH = str(REPO_DIR / "rf_model_new.pkl")   # مكان الموديل
-REQUIRED_FEATURES = ["distinct_B", "successful_sms"]
-CHUNK_ROWS = 2_000_000
+MODEL_PATH = str(REPO_DIR / "rf_model_new.pkl")   # خلي الملف ده جنب app.py
 DEFAULT_THRESHOLD = float(os.getenv("DEFAULT_THRESHOLD", "0.9978"))
 
-st.set_page_config(page_title="Anomaly Scoring — Production", layout="wide")
+st.set_page_config(page_title="🚨 Anomaly/Fraud Scoring — Production", layout="wide")
 
 # ================== STYLES ==================
 st.markdown(
@@ -37,19 +27,14 @@ st.markdown(
 )
 
 # ================== MODEL LOAD ==================
-import joblib   # <<< الاستدعاء الصحيح
-
 def _load_model(path: str):
-    """Load model with joblib (fallback to pickle if needed)."""
+    """جرب joblib لو موجود، لو مش موجود استعمل pickle"""
     try:
+        import joblib
         return joblib.load(path)
     except Exception:
-        try:
-            with open(path, "rb") as fh:
-                return pickle.load(fh)
-        except Exception as e:
-            st.error(f"❌ Failed to load model at {path}. Error: {e}")
-            st.stop()
+        with open(path, "rb") as fh:
+            return pickle.load(fh)
 
 @st.cache_resource
 def load_model_and_threshold():
@@ -70,38 +55,21 @@ def load_model_and_threshold():
     classes = getattr(model, "classes_", None)
     if classes is not None and list(classes) != [0, 1]:
         st.warning(f"⚠️ model.classes_ = {classes} (expected [0, 1]).")
+
     return model, th
 
-# حمل الموديل والثريشولد
+# ================== RUN ==================
 model, default_th = load_model_and_threshold()
+st.success("✅ Model loaded successfully!")
 
-# ================== SIDEBAR ==================
-st.sidebar.title("⚙️ Settings")
-threshold = st.sidebar.slider(
-    "Anomaly Threshold", 0.90, 0.9999, default_th, step=0.0001
-)
+# ========== مثال بسيط على input ==========
+uploaded = st.file_uploader("📂 Upload CSV for scoring", type=["csv"])
+if uploaded:
+    df = pd.read_csv(uploaded)
+    st.write("📊 Preview:", df.head())
 
-uploaded_file = st.sidebar.file_uploader("Upload CSV for Scoring", type=["csv"])
-
-# ================== MAIN ==================
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-
-    missing = [f for f in REQUIRED_FEATURES if f not in df.columns]
-    if missing:
-        st.error(f"❌ Missing required columns: {missing}")
-        st.stop()
-
-    X = df[REQUIRED_FEATURES].values
-    probs = model.predict_proba(X)[:, 1]
-    df["anomaly_score"] = probs
-    df["anomaly_flag"] = (probs >= threshold).astype(int)
-
-    st.success("✅ Scoring completed!")
-    st.dataframe(df.head(20))
-
-    csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button("📥 Download Scored CSV", csv, "scored.csv", "text/csv")
-
-elif not uploaded_file:
-    st.info("⬅️ Upload a CSV file from the sidebar to start scoring.")
+    try:
+        preds = model.predict(df)
+        st.write("✅ Predictions:", preds[:10])
+    except Exception as e:
+        st.error(f"❌ Prediction error: {e}")
